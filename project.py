@@ -24,7 +24,7 @@ x_test = d_data[~d_data['athlete'].isin(val_idx) & ~d_data['athlete'].isin(train
 k=0
 filtered_df = x_train[x_train['age_group'] == '18 - 34']
 idx = filtered_df.index
-n = len(filtered_df)/365
+n = int(len(filtered_df)/365)
 avg_vec = np.zeros((n,1))
 
 for i in idx[0:n]:
