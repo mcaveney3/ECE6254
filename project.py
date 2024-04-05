@@ -21,19 +21,18 @@ x_test = d_data[~d_data['athlete'].isin(val_idx) & ~d_data['athlete'].isin(train
 
 #%% plotting fun!
 
-n=1000
-avg_data = np.zeros((n,1))
-
-filtered_df = x_train[x_train['age_group'] == '18 - 34']
+filtered_df = x_train[x_train['age_group'] == '55 +']
 idx = filtered_df.index
-for i in idx:
-    #grab athlete and assign color for gender
+for i in idx[0:2216]:
+    #grab 18-34 y/o athlete and assign color for gender
     if (filtered_df['gender'][i]== 'M'):
         color = 'bo'
     else:
         color = 'ro'
     ath = filtered_df[(filtered_df['athlete']==i) & (filtered_df['duration']!=0)]
-    
-    pace = ath['distance']/ath['duration']
+    #ath = filtered_df[(filtered_df['athlete']==i)]
+    pace = ath['duration']/ath['distance']
     avg = np.average(pace)
     plt.plot(i,avg,color)
+
+plt.ylim(0, 20)
