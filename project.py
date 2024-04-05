@@ -31,13 +31,11 @@ for i in idx[0:2216]:
     else:
         color = 'ro'
     ath = filtered_df.iloc[i].athlete
-    dist = filtered_df[(filtered_df['athlete']==ath) & (filtered_df['distance']!=0)]
-    ath = filtered_df[(filtered_df['athlete']==i) & (filtered_df['distance']!=0)]
+    ath_data = filtered_df[(filtered_df['athlete']==ath) & (filtered_df['distance']!=0)]
 
-    pace = ath['duration']/ath['distance']
+    pace = ath_data['duration']/ath_data['distance']
     avg = np.average(pace)
-    avg_vec[k] = avg
-    k+=1
+    avg_vec[k] = avg; k+=1
     plt.plot(i,avg,color)
 
 plt.ylim(0, 20)
