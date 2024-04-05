@@ -20,11 +20,14 @@ x_test = d_data[~d_data['athlete'].isin(val_idx) & ~d_data['athlete'].isin(train
 #%% Generate new features in training set from day data
 
 #%% plotting fun!
-avg_vec = np.zeros((2216,1))
+
 k=0
 filtered_df = x_train[x_train['age_group'] == '18 - 34']
 idx = filtered_df.index
-for i in idx[0:2216]:
+n = len(filtered_df)/365
+avg_vec = np.zeros((n,1))
+
+for i in idx[0:n]:
     #grab 18-34 y/o athlete and assign color for gender
     if (filtered_df['gender'][i]== 'M'):
         color = 'bo'
