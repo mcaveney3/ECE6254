@@ -20,8 +20,9 @@ x_test = d_data[~d_data['athlete'].isin(val_idx) & ~d_data['athlete'].isin(train
 #%% Generate new features in training set from day data
 
 #%% plotting fun!
-
-filtered_df = x_train[x_train['age_group'] == '55 +']
+avg_vec = np.zeros((2216,1))
+k=0
+filtered_df = x_train[x_train['age_group'] == '18 - 34']
 idx = filtered_df.index
 for i in idx[0:2216]:
     #grab 18-34 y/o athlete and assign color for gender
@@ -29,10 +30,15 @@ for i in idx[0:2216]:
         color = 'bo'
     else:
         color = 'ro'
-    ath = filtered_df[(filtered_df['athlete']==i) & (filtered_df['duration']!=0)]
-    #ath = filtered_df[(filtered_df['athlete']==i)]
+    ath = filtered_df.iloc[i].athlete
+    dist = filtered_df[(filtered_df['athlete']==ath) & (filtered_df['distance']!=0)]
+    ath = filtered_df[(filtered_df['athlete']==i) & (filtered_df['distance']!=0)]
+
     pace = ath['duration']/ath['distance']
     avg = np.average(pace)
+    avg_vec[k] = avg
+    k+=1
     plt.plot(i,avg,color)
 
 plt.ylim(0, 20)
+print("mean min/km for age group: " + str(np.average(avg_vec)))
