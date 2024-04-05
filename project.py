@@ -23,15 +23,16 @@ x_test = d_data[~d_data['athlete'].isin(val_idx) & ~d_data['athlete'].isin(train
 
 n=1000
 avg_data = np.zeros((n,1))
-for i in range(n):
+
+filtered_df = x_train[x_train['age_group'] == '18 - 34']
+idx = filtered_df.index
+for i in idx:
     #grab athlete and assign color for gender
-    if (d_data['gender'][i]== 'M'):
+    if (filtered_df['gender'][i]== 'M'):
         color = 'bo'
     else:
         color = 'ro'
-    ath = x_train[(x_train['athlete']==i) & (x_train['duration']!=0)]
-    if (ath['age_group'] !=	'18 - 34'):
-        continue
+    ath = filtered_df[(filtered_df['athlete']==i) & (filtered_df['duration']!=0)]
     
     pace = ath['distance']/ath['duration']
     avg = np.average(pace)
