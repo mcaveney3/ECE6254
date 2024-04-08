@@ -57,7 +57,7 @@ enum_df = pd.DataFrame(enum_set)
 
 #normalize all columns except gender and athlete ID
 scaler = StandardScaler()
-enum_df_norm = enum_df
+enum_df_norm = enum_df.copy()
 enum_df_num = enum_df_norm.drop(['athlete', 'gender'], axis=1)
 enum_df_norm[enum_df_num.columns] = scaler.fit_transform(enum_df_num)
 
