@@ -8,6 +8,8 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import f_classif
 
 #%% Read and separate data
 #d_data = pd.read_parquet('dataset/run_ww_2019_d.parquet', engine='pyarrow')
@@ -102,6 +104,17 @@ for trainValn in range(2):
 #%% logistic regression
 y_train = enum_train_df[['gender']]
 y_val = enum_val_df[['gender']]
+
+x_vals = enum_train_df_norm.drop(['athlete', 'gender'], axis=1).values
+y_vals = y_train.values
+
+selector = SelectKBest(score_func=f_classif, k=4)
+xfs = selector.fit_transform(x_vals, y_vals)
+selected_indices = selector.get_support(indices=True)
+selected_feature_names = enum_train_df_norm.drop(['athlete', 'gender'], axis=1).columns[selected_indices]
+
+enum_train_df = enum_train_df[selected_feature_names]
+enum_val_df = enum_val_df[selected_feature_names]
 
 # Fit the model with the training data
 logistic_model = LogisticRegression(class_weight={0:0.7, 1:0.3})#, solver="liblinear")
