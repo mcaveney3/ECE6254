@@ -6,6 +6,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 
 #%% Read and separate data
 #d_data = pd.read_parquet('dataset/run_ww_2019_d.parquet', engine='pyarrow')
@@ -110,19 +112,34 @@ y_pred = logistic_model.predict(enum_val_df_norm.drop(['athlete', 'gender'], axi
 accuracy = accuracy_score(y_val, y_pred)
 report = classification_report(y_val, y_pred)
 
-print('Logistic Regression:')
-print( 'Accuracy: ' + str( accuracy ))
-print( report )
-
-
 #LDA
 lda = LDA(n_components=1)
 lda.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender)
 y_pred = lda.predict(enum_val_df_norm.drop(['athlete', 'gender'], axis=1))
 LDA_accuracy = accuracy_score(y_val, y_pred)
 LDA_report = classification_report(y_val, y_pred)
+
+
+nn_model = Sequential([
+    Dense(13, input_shape=(enum_train_df_norm.drop(['athlete', 'gender'], axis=1).shape[1],), activation='relu'),  # Input layer
+    Dense(8, activation='relu'),  # Hidden layer
+    Dense(6, activation='relu'),  # Hidden layer
+    Dense(1, activation='sigmoid')  # Output layer
+])
+nn_model.compile(optimizer='sgd',
+              loss='binary_focal_crossentropy',
+              metrics=['accuracy', 'Recall'])
+history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=10, class_weight={0:0.3, 1:0.7}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
+nn_loss, nn_accuracy, nn_recall = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
+
+print('Logistic Regression:')
+print( 'Accuracy: ' + str( accuracy ))
+print( report )
+
 print('LDA:')
 print( 'Accuracy: ' + str( LDA_accuracy ))
 print( LDA_report )
 
-
+print('NN:')
+print( 'Accuracy: ' + str( nn_accuracy ))
+print( 'Recall: ' + str( nn_recall ))
