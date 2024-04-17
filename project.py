@@ -8,7 +8,9 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.metrics import accuracy_score, classification_report
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
-
+from keras.regularizers import l2
+from keras.layers import Dropout
+from keras.optimizers import Adam
 
 #%% Read and separate data
 d_data = pd.read_parquet('dataset/run_ww_2019_d.parquet')
@@ -25,7 +27,10 @@ x_val = d_data[d_data['athlete'].isin(val_idx)]
 x_test = d_data[~d_data['athlete'].isin(val_idx) & ~q_data['athlete'].isin(train_idx)]
 
 
-#%% Generate new features in training and validation set from day data per athlete
+#%% Generate new features in training and validation set from day data for each athlete
+marathons_2019 = ['BERLIN 2019','BOSTON 2019','LONDON 2019','CHICAGO 2019','TOKYO 2019','NEW YORK 2019']
+race_days = [271,104,117,285,61,306]
+
 for trainValn in range(2):
     x_set = x_train.copy() if trainValn == 1 else x_val.copy()
     
@@ -38,20 +43,40 @@ for trainValn in range(2):
     #calculate all values per athlete
     n = int(len(x_set)/365)
     idx = x_set.index
+    
     for i in idx[0:n]:
         ath = x_set.iloc[i].athlete
+        ath_data = x_set[(x_set['athlete']==ath)].copy().reset_index()
+        
+        #which 2019 marathon did they run (if any) ?
+        marathon = ath_data.iloc[0].major
+        day_of_race = next((race_days[i] for i in range(6) if marathon.find(marathons_2019[i]) != -1), -1)
+        if day_of_race == -1:
+            continue
+        
+        #athlete should have ran one of the 2019 marathons
+        dist_last_7 = np.sum(ath_data['distance'][day_of_race-7:day_of_race])
+        KPW_last_4 = np.sum(ath_data['distance'][day_of_race-28:day_of_race])/4
+        dur_last_7 = np.sum(ath_data['duration'][day_of_race-7:day_of_race])
+        HPW_last_4 = np.sum(ath_data['duration'][day_of_race-28:day_of_race])/4
+        LR_last_7 = np.sum((ath_data['distance'][day_of_race-7:day_of_race] > 13.1) == True)
+        LR_last_4 = np.sum((ath_data['distance'][day_of_race-28:day_of_race] > 13.1) == True)
+        Longest_run_7 = max(ath_data['distance'][day_of_race-7:day_of_race])
+        Longest_run_4 = max(ath_data['distance'][day_of_race-28:day_of_race])
+
+        
+        #only take non-zero runs for rest of calculations
         ath_data = x_set[(x_set['athlete']==ath) & (x_set['distance']!=0)]
-    
         dist = ath_data['distance']
         dur = ath_data['duration']
         pace = dur/dist
         
         new_entry = {
             'athlete' : ath,
-            'distance_avg' : np.average(dist),
-            'distance_total' : np.sum(dist),
-            'duration_avg' : np.average(dur),
-            'duration_total' : np.sum(dur),
+            'distance_avg' : np.average(dist), #in full year
+            'distance_total' : np.sum(dist), #in full year
+            'duration_avg' : np.average(dur), #in full year
+            'duration_total' : np.sum(dur), #in full year
             'gender' : enum_gender.index(ath_data.iloc[0].gender),
             'age_group' : enum_age.index(ath_data.iloc[0].age_group),
             #'country' : enum_countries.index(ath_data.iloc[0].country),
@@ -60,6 +85,16 @@ for trainValn in range(2):
             'runs_per_week' : len(ath_data)/52,
             'distance_variance' : np.var(dist),
             'duration_variance' : np.var(dur),
+            
+            #all data leading up to athlete's marathon
+            'dist_last_7_days' : dist_last_7,
+            'KPW_last_4_weeks' : KPW_last_4,
+            'duration_last_7_days' : dur_last_7,
+            'HPW_last_4_weeks' : HPW_last_4,
+            'long_runs_last_7_days' : LR_last_7,
+            'long_runs_last_4_weeks' : LR_last_4,
+            'longest_run_last_7_days' : Longest_run_7,
+            #'longest_run_last_4_weeks': Longest_run_4
             #'pace_variance' : np.var(pace)
             }
         
@@ -97,25 +132,30 @@ LR_accuracy = accuracy_score(y_val, y_pred)
 LR_report = classification_report(y_val, y_pred)
 
 
-#LDA
+#%% LDA
 lda = LDA(n_components=1)
 lda.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender)
 y_pred = lda.predict(enum_val_df_norm.drop(['athlete', 'gender'], axis=1))
 LDA_accuracy = accuracy_score(y_val, y_pred)
 LDA_report = classification_report(y_val, y_pred)
 
-#neural net
-# Define the model
+#%% neural net
+learning_rate = 0.001
+optimizer = Adam(learning_rate=learning_rate)
+
 nn_model = Sequential([
-    Dense(10, input_shape=(enum_train_df_norm.drop(['athlete', 'gender'], axis=1).shape[1],), activation='relu'),  # Input layer
-    Dense(8, activation='relu'),  # Hidden layer
-    Dense(1, activation='sigmoid')  # Output layer
+    Dense(15, input_shape=(enum_train_df_norm.drop(['athlete', 'gender'], axis=1).shape[1],), activation='relu', kernel_regularizer=l2(0.01)),
+    #Dropout(0.5),
+    Dense(8, activation='relu', kernel_regularizer=l2(0.01)), 
+    #Dropout(0.5),
+    Dense(1, activation='sigmoid')
 ])
-nn_model.compile(optimizer='adam',
-              loss='binary_focal_crossentropy',
-              metrics=['accuracy', 'Recall'])
-history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=50, class_weight={0:0.25, 1:0.75}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
-nn_loss, nn_accuracy, nn_recall = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
+
+nn_model.compile(optimizer=optimizer,
+              loss='binary_crossentropy',
+              metrics=['accuracy', 'Recall','Precision'])
+history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=100, class_weight={0:0.5, 1:1.5}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
+nn_loss, nn_accuracy, nn_recall, nn_precision = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
 
 #%% plotting separated by age for M/F
 
