@@ -11,6 +11,7 @@ from tensorflow.keras.layers import Dense
 from keras.regularizers import l2
 from keras.layers import Dropout
 from keras.optimizers import Adam
+from imblearn.over_sampling import SMOTE
 
 #%% Read and separate data
 d_data = pd.read_parquet('dataset/run_ww_2019_d.parquet')
@@ -24,7 +25,7 @@ val_idx = range(7000,14000)
 
 x_train = d_data[d_data['athlete'].isin(train_idx)]
 x_val = d_data[d_data['athlete'].isin(val_idx)]
-x_test = d_data[~d_data['athlete'].isin(val_idx) & ~q_data['athlete'].isin(train_idx)]
+x_test = d_data[~d_data['athlete'].isin(val_idx) & ~d_data['athlete'].isin(train_idx)]
 
 
 #%% Generate new features in training and validation set from day data for each athlete
@@ -37,8 +38,8 @@ for trainValn in range(2):
     enum_set = []
     enum_countries = list(set(x_set.country))
     #enum_major = list(set(x_set.major))
-    enum_age = list(set(x_set.age_group))
-    enum_gender = list(set(x_set.gender))
+    enum_age = ['18 - 34', '35 - 54', '55 +']
+    enum_gender = ['M', 'F']
     
     #calculate all values per athlete
     n = int(len(x_set)/365)
@@ -55,10 +56,15 @@ for trainValn in range(2):
             continue
         
         #athlete should have ran one of the 2019 marathons
+        nonzero_idx4 = (ath_data['duration'] != 0) & (ath_data.index < day_of_race) & (ath_data.index >= day_of_race-28)
+        nonzero_idx7 = nonzero_idx4 & (ath_data.index >= day_of_race-7)
+        
         dist_last_7 = np.sum(ath_data['distance'][day_of_race-7:day_of_race])
         KPW_last_4 = np.sum(ath_data['distance'][day_of_race-28:day_of_race])/4
         dur_last_7 = np.sum(ath_data['duration'][day_of_race-7:day_of_race])
         HPW_last_4 = np.sum(ath_data['duration'][day_of_race-28:day_of_race])/4
+        pace_var_last_7 = np.nan_to_num(np.var(ath_data.loc[nonzero_idx7].duration/ath_data.loc[nonzero_idx7].distance))*100
+        pace_var_last_4 = np.nan_to_num(np.var(ath_data.loc[nonzero_idx4].duration/ath_data.loc[nonzero_idx4].distance))*100
         LR_last_7 = np.sum((ath_data['distance'][day_of_race-7:day_of_race] > 13.1) == True)
         LR_last_4 = np.sum((ath_data['distance'][day_of_race-28:day_of_race] > 13.1) == True)
         Longest_run_7 = max(ath_data['distance'][day_of_race-7:day_of_race])
@@ -78,19 +84,21 @@ for trainValn in range(2):
             'duration_avg' : np.average(dur), #in full year
             'duration_total' : np.sum(dur), #in full year
             'gender' : enum_gender.index(ath_data.iloc[0].gender),
-            'age_group' : enum_age.index(ath_data.iloc[0].age_group),
+            #'age_group' : enum_age.index(ath_data.iloc[0].age_group),
             #'country' : enum_countries.index(ath_data.iloc[0].country),
             #'major' : enum_major.index(ath_data.iloc[0].major),
             #'pace_avg' : np.average(pace),
             'runs_per_week' : len(ath_data)/52,
-            'distance_variance' : np.var(dist),
-            'duration_variance' : np.var(dur),
+            #'distance_variance' : np.var(dist),
+            #'duration_variance' : np.var(dur),
             
             #all data leading up to athlete's marathon
             'dist_last_7_days' : dist_last_7,
             'KPW_last_4_weeks' : KPW_last_4,
             'duration_last_7_days' : dur_last_7,
             'HPW_last_4_weeks' : HPW_last_4,
+            'pace_var_last_7_days' : pace_var_last_7,
+            'pace_var_last_74_weeks' : pace_var_last_4,
             'long_runs_last_7_days' : LR_last_7,
             'long_runs_last_4_weeks' : LR_last_4,
             'longest_run_last_7_days' : Longest_run_7,
@@ -118,13 +126,19 @@ for trainValn in range(2):
         enum_val_df_norm[enum_df_num.columns] = scaler.fit_transform(enum_df_num)
         
 
-#%% logistic regression
-y_train = enum_train_df[['gender']]
+X_train_orig = enum_train_df_norm.drop(['athlete', 'gender'], axis=1).copy()
+y_train_orig = enum_train_df[['gender']]
 y_val = enum_val_df[['gender']]
 
+sm = SMOTE(random_state=42)
+X_train, y_train = sm.fit_resample(X_train_orig, y_train_orig)
+        
+
+#%% logistic regression
+
 # Fit the model with the training data
-logistic_model = LogisticRegression(class_weight={0:0.25, 1:0.75})
-logistic_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender)
+logistic_model = LogisticRegression()
+logistic_model.fit(X_train, y_train.gender)
 
 # Predicting the Test set results
 y_pred = logistic_model.predict(enum_val_df_norm.drop(['athlete', 'gender'], axis=1))
@@ -154,7 +168,7 @@ nn_model = Sequential([
 nn_model.compile(optimizer=optimizer,
               loss='binary_crossentropy',
               metrics=['accuracy', 'Recall','Precision'])
-history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=100, class_weight={0:0.5, 1:1.5}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
+history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=10, class_weight={0:0.5, 1:1.5}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
 nn_loss, nn_accuracy, nn_recall, nn_precision = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
 
 #%% plotting separated by age for M/F
