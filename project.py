@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import datetime
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
@@ -12,6 +13,7 @@ from keras.regularizers import l2
 from keras.layers import Dropout
 from keras.optimizers import Adam
 from imblearn.over_sampling import SMOTE
+from matplotlib.lines import Line2D
 
 #%% Read and separate data
 d_data = pd.read_parquet('dataset/run_ww_2019_d.parquet')
@@ -84,7 +86,7 @@ for trainValn in range(2):
             'duration_avg' : np.average(dur), #in full year
             'duration_total' : np.sum(dur), #in full year
             'gender' : enum_gender.index(ath_data.iloc[0].gender),
-            #'age_group' : enum_age.index(ath_data.iloc[0].age_group),
+            'age_group' : enum_age.index(ath_data.iloc[0].age_group),
             #'country' : enum_countries.index(ath_data.iloc[0].country),
             #'major' : enum_major.index(ath_data.iloc[0].major),
             #'pace_avg' : np.average(pace),
@@ -102,7 +104,7 @@ for trainValn in range(2):
             'long_runs_last_7_days' : LR_last_7,
             'long_runs_last_4_weeks' : LR_last_4,
             'longest_run_last_7_days' : Longest_run_7,
-            #'longest_run_last_4_weeks': Longest_run_4
+            'longest_run_last_4_weeks': Longest_run_4
             #'pace_variance' : np.var(pace)
             }
         
@@ -112,10 +114,10 @@ for trainValn in range(2):
         enum_train_df = pd.DataFrame(enum_set)
         
         #normalize all columns except gender and athlete ID
-        scaler = StandardScaler()
-        enum_train_df_norm = enum_train_df.copy()
-        enum_df_num = enum_train_df_norm.drop(['athlete', 'gender'], axis=1)
-        enum_train_df_norm[enum_df_num.columns] = scaler.fit_transform(enum_df_num)
+        #scaler = StandardScaler()
+        #enum_train_df_norm = enum_train_df.copy()
+        #enum_df_num = enum_train_df_norm.drop(['athlete', 'gender'], axis=1)
+        #enum_train_df_norm[enum_df_num.columns] = scaler.fit_transform(enum_df_num)
     else:
         enum_val_df = pd.DataFrame(enum_set)
         
@@ -126,13 +128,20 @@ for trainValn in range(2):
         enum_val_df_norm[enum_df_num.columns] = scaler.fit_transform(enum_df_num)
         
 
-X_train_orig = enum_train_df_norm.drop(['athlete', 'gender'], axis=1).copy()
+#%% resample and normalize
+X_train_orig = enum_train_df.drop(['athlete', 'gender'], axis=1).copy()
 y_train_orig = enum_train_df[['gender']]
 y_val = enum_val_df[['gender']]
 
+#resample
 sm = SMOTE(random_state=42)
-X_train, y_train = sm.fit_resample(X_train_orig, y_train_orig)
-        
+X_train_resampled, y_train_resampled = sm.fit_resample(X_train_orig, y_train_orig)
+
+#normalize all columns except gender and athlete ID for train data
+scaler = StandardScaler()
+X_train = X_train_resampled.copy()
+X_train[X_train.columns] = scaler.fit_transform(X_train)
+y_train = y_train_resampled
 
 #%% logistic regression
 
@@ -148,7 +157,7 @@ LR_report = classification_report(y_val, y_pred)
 
 #%% LDA
 lda = LDA(n_components=1)
-lda.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender)
+lda.fit(X_train, y_train.gender)
 y_pred = lda.predict(enum_val_df_norm.drop(['athlete', 'gender'], axis=1))
 LDA_accuracy = accuracy_score(y_val, y_pred)
 LDA_report = classification_report(y_val, y_pred)
@@ -158,9 +167,9 @@ learning_rate = 0.001
 optimizer = Adam(learning_rate=learning_rate)
 
 nn_model = Sequential([
-    Dense(15, input_shape=(enum_train_df_norm.drop(['athlete', 'gender'], axis=1).shape[1],), activation='relu', kernel_regularizer=l2(0.01)),
+    Dense(15, input_shape=(X_train.shape[1],), activation='relu', kernel_regularizer=l2(0.01)),
     #Dropout(0.5),
-    Dense(8, activation='relu', kernel_regularizer=l2(0.01)), 
+    Dense(10, activation='sigmoid', kernel_regularizer=l2(0.01)),  
     #Dropout(0.5),
     Dense(1, activation='sigmoid')
 ])
@@ -168,23 +177,22 @@ nn_model = Sequential([
 nn_model.compile(optimizer=optimizer,
               loss='binary_crossentropy',
               metrics=['accuracy', 'Recall','Precision'])
-history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=10, class_weight={0:0.5, 1:1.5}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
+history = nn_model.fit(X_train, y_train.gender, epochs=30, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
 nn_loss, nn_accuracy, nn_recall, nn_precision = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
 
 #%% plotting separated by age for M/F
-
 k=0
 age_group= '18 - 34'
-filtered_df = x_train[(x_train['age_group'] == age_group)]# & (x_train['major'].str.contains('CHICAGO 2019'))]
+filtered_df = x_train[(x_train['age_group'] == age_group) & (x_train['major'].str.contains('CHICAGO 2019'))]
 #country = 'United Kingdom'
 #filtered_df = x_train[(x_train['country'] == country)]
 
-
+'''
 idx = filtered_df.index
 n = int(len(filtered_df)/365)
 m_avg_vec = np.zeros((n,1))
 f_avg_vec = np.zeros((n,1))
-fig = plt.figure()
+
 
 for i in idx[0:n]:
     #grab 18-34 y/o athlete and assign color for gender
@@ -204,15 +212,68 @@ for i in idx[0:n]:
         f_avg_vec[k] = avg; k+=1
     
     plt.plot(ath_data.index,pace,color)
+'''
 
-plt.ylim(2, 10)
-plt.ylabel('min/km')
-print("age group: " + age_group)
-print("avg pace overall: " + str(np.average(m_avg_vec + f_avg_vec)))
-print("avg pace male: " + str(np.average(m_avg_vec[m_avg_vec!=0])))
-print("avg pace female: " + str(np.average(f_avg_vec[f_avg_vec!=0])))
+mask = (filtered_df['distance'] != 0) & (filtered_df['gender'] == 'M')
+subset = filtered_df[mask]
+color_metric = subset['duration'] / subset['distance']
 
+fig, ax = plt.subplots()
+plt.axvline(pd.to_datetime('2019-10-13 00:00:00'), color='r')
+scatter = ax.scatter(subset['datetime'], subset['distance'], c=color_metric, s=1,vmin=5,vmax=8, cmap='inferno')
+plt.colorbar(scatter, ax=ax, label='Pace (min/km)')
+ax.set_xlabel('Date')
+ax.set_ylabel('Distance (km)')
+ax.set_title('2019 Chicago Marathon - 18-34 Year Old Female Training Data')
 
+plt.show()
+
+#%% plotting pace by age group
+fig, ax = plt.subplots()
+k=0
+#filtered_df = x_train[x_train.gender == 'M']
+filtered_df = x_train
+
+idx = filtered_df.index
+n = int(len(filtered_df)/365)
+avg_vec_1 = np.zeros((n,1))
+avg_vec_2 = np.zeros((n,1))
+avg_vec_3 = np.zeros((n,1))
+
+for i in idx[0:n]:
+    #grab athlete and assign color for age
+    ath = filtered_df.iloc[i].athlete
+    ath_data = filtered_df[(filtered_df['athlete']==ath) & (filtered_df['distance']!=0)]
+
+    pace = np.sum(ath_data['duration'])/np.sum(ath_data['distance'])
+    if (pace > 1000):
+        print(str(i))
+    #avg = np.average(pace)
+    #dist = ath_data['distance']
+    #avg = np.average(dist)
+    
+    if (filtered_df['age_group'][i] == '18 - 34'):
+        color = 'blue'
+        avg_vec_1[k] = pace; k+=1
+    elif (filtered_df['age_group'][i] == '35 - 54'):
+        color = 'red'
+        avg_vec_2[k] = pace; k+=1
+    else:
+        avg_vec_3[k] = pace; k+=1
+        color = 'green'
+    
+    ax.scatter(i,pace,color = color,s=1)
+    
+legend_elements = [
+    Line2D([0], [0], marker='o', color='w', label='18 - 34', markerfacecolor='blue', markersize=5),
+    Line2D([0], [0], marker='o', color='w', label='35 - 54', markerfacecolor='red', markersize=5),
+    Line2D([0], [0], marker='o', color='w', label='55 +', markerfacecolor='green', markersize=5)
+]
+ax.legend(handles=legend_elements)
+plt.ylim(0,15)
+ax.set_xlabel('Athlete #')
+ax.set_ylabel('Average Pace (min/km)')
+ax.set_title('Average Pace by Age')
 
 
 
