@@ -9,6 +9,8 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
+from tensorflow.keras.metrics import Recall,Precision
+from imblearn.over_sampling import SMOTE
 
 #%% Read and separate data
 #d_data = pd.read_parquet('dataset/run_ww_2019_d.parquet', engine='pyarrow')
@@ -137,17 +139,27 @@ for trainValn in range(2):
 # plt.grid(True)
 # plt.show()
 
-
-#%% logistic regression
-y_train = enum_train_df[['gender']]
+#%% resample and normalize
+X_train_orig = enum_train_df.drop(['athlete', 'gender'], axis=1).copy()
+y_train_orig = enum_train_df[['gender']]
 y_val = enum_val_df[['gender']]
 
-x_vals = enum_train_df_norm.drop(['athlete', 'gender'], axis=1).values
-y_vals = y_train.values
+#resample
+sm = SMOTE(random_state=42)
+X_train_resampled, y_train_resampled = sm.fit_resample(X_train_orig, y_train_orig)
+
+#normalize all columns except gender and athlete ID for train data
+scaler = StandardScaler()
+x_train = X_train_resampled.copy()
+x_train[x_train.columns] = scaler.fit_transform(x_train)
+y_train = y_train_resampled
+
+
+#%% logistic regression
 
 # Fit the model with the training data
-logistic_model = LogisticRegression(class_weight={0:0.7, 1:0.3})#, solver="liblinear")
-logistic_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender)
+logistic_model = LogisticRegression(class_weight={0:0.25, 1:0.75})
+logistic_model.fit(x_train, y_train.gender)
 
 # Predicting the Test set results
 y_pred = logistic_model.predict(enum_val_df_norm.drop(['athlete', 'gender'], axis=1))
@@ -156,23 +168,23 @@ report = classification_report(y_val, y_pred)
 
 #LDA
 lda = LDA(n_components=1)
-lda.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender)
+lda.fit(x_train, y_train.gender)
 y_pred = lda.predict(enum_val_df_norm.drop(['athlete', 'gender'], axis=1))
 LDA_accuracy = accuracy_score(y_val, y_pred)
 LDA_report = classification_report(y_val, y_pred)
 
 
 nn_model = Sequential([
-    Dense(13, input_shape=(enum_train_df_norm.drop(['athlete', 'gender'], axis=1).shape[1],), activation='relu'),  # Input layer
+    Dense(13, input_shape=(x_train.shape[1],), activation='relu'),  # Input layer
     Dense(8, activation='relu'),  # Hidden layer
     Dense(6, activation='relu'),  # Hidden layer
     Dense(1, activation='sigmoid')  # Output layer
 ])
 nn_model.compile(optimizer='sgd',
               loss='binary_focal_crossentropy',
-              metrics=['accuracy', 'Recall', 'Precision'])
-history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=30, class_weight={0:0.3, 1:0.7}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
-nn_loss, nn_accuracy, nn_recall, nn_precision = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
+              metrics=[Recall(), Precision(), 'accuracy' ])
+history = nn_model.fit(x_train, y_train.gender, epochs=10, class_weight={0:0.25, 1:0.75}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
+nn_loss, nn_recall, nn_precision, nn_accuracy = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
 
 print('Logistic Regression:')
 print( 'Accuracy: ' + str( accuracy ))
