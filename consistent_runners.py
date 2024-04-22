@@ -170,9 +170,9 @@ nn_model = Sequential([
 ])
 nn_model.compile(optimizer='sgd',
               loss='binary_focal_crossentropy',
-              metrics=['accuracy', 'Recall'])
-history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=10, class_weight={0:0.3, 1:0.7}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
-nn_loss, nn_accuracy, nn_recall = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
+              metrics=['accuracy', 'Recall', 'Precision'])
+history = nn_model.fit(enum_train_df_norm.drop(['athlete', 'gender'], axis=1), y_train.gender, epochs=30, class_weight={0:0.3, 1:0.7}, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
+nn_loss, nn_accuracy, nn_recall, nn_precision = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
 
 print('Logistic Regression:')
 print( 'Accuracy: ' + str( accuracy ))
@@ -185,3 +185,5 @@ print( LDA_report )
 print('NN:')
 print( 'Accuracy: ' + str( nn_accuracy ))
 print( 'Recall: ' + str( nn_recall ))
+print( 'Precision: ' + str( nn_precision ))
+print( 'Loss: ' + str( nn_loss ))

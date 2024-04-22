@@ -71,7 +71,14 @@ for trainValn in range(2):
         LR_last_4 = np.sum((ath_data['distance'][day_of_race-28:day_of_race] > 13.1) == True)
         Longest_run_7 = max(ath_data['distance'][day_of_race-7:day_of_race])
         Longest_run_4 = max(ath_data['distance'][day_of_race-28:day_of_race])
-
+        run_last_7 = len(ath_data[day_of_race-7:day_of_race][ath_data['distance'] > 0])
+        run_last_7_2 = len(ath_data[day_of_race-14:day_of_race-7][ath_data['distance'] > 0])
+        run_last_7_3 = len(ath_data[day_of_race-21:day_of_race-14][ath_data['distance'] > 0])
+        run_last_7_4 = len(ath_data[day_of_race-28:day_of_race-21][ath_data['distance'] > 0])
+        run_after_7 = len(ath_data[day_of_race:day_of_race+7][ath_data['distance'] > 0])
+        run_after_7_2 = len(ath_data[day_of_race+7:day_of_race+14][ath_data['distance'] > 0])
+        run_after_7_3 = len(ath_data[day_of_race+14:day_of_race+21][ath_data['distance'] > 0])
+        run_after_7_4 = len(ath_data[day_of_race+21:day_of_race+28][ath_data['distance'] > 0])
         
         #only take non-zero runs for rest of calculations
         ath_data = x_set[(x_set['athlete']==ath) & (x_set['distance']!=0)]
@@ -104,8 +111,16 @@ for trainValn in range(2):
             'long_runs_last_7_days' : LR_last_7,
             'long_runs_last_4_weeks' : LR_last_4,
             'longest_run_last_7_days' : Longest_run_7,
-            'longest_run_last_4_weeks': Longest_run_4
+            'longest_run_last_4_weeks': Longest_run_4,
             #'pace_variance' : np.var(pace)
+            'runs_last_7_days' : run_last_7,
+            'runs_last_7_days_2' : run_last_7_2,
+            'runs_last_7_days_3' : run_last_7_3,
+            'runs_last_7_days_4' : run_last_7_4,
+            'runs_after_7_days' : run_after_7,
+            'runs_after_7_days_2' : run_after_7_2,
+            'runs_after_7_days_3' : run_after_7_3,
+            'runs_after_7_days_4' : run_after_7_4,
             }
         
         enum_set.append(new_entry)
@@ -143,6 +158,34 @@ X_train = X_train_resampled.copy()
 X_train[X_train.columns] = scaler.fit_transform(X_train)
 y_train = y_train_resampled
 
+# Marathon run count graph
+# graph_data = enum_train_df[enum_train_df['gender']==1]
+# avg_rpw = np.average( graph_data[['runs_per_week']] )
+# marathon_week_data = [
+#     np.average( graph_data[['runs_last_7_days_4']] ), 
+#     np.average( graph_data[['runs_last_7_days_3']] ),
+#     np.average( graph_data[['runs_last_7_days_2']] ),
+#     np.average( graph_data[['runs_last_7_days']] ),
+#     np.average( graph_data[['runs_after_7_days']] ),
+#     np.average( graph_data[['runs_after_7_days_2']] ),
+#     np.average( graph_data[['runs_after_7_days_3']] ),
+#     np.average( graph_data[['runs_after_7_days_4']] )
+# ]
+# marathon_week_labels = ['-4', '-3', '-2', '-1', '+1', '+2', '+3', '+4']
+# marathon_week_xs = [0,1,2,3,4,5,6,7]
+# plt.figure(1)
+# plt.ylim(1.95,3.8)
+# plt.xticks(marathon_week_xs, marathon_week_labels)
+# plt.xlabel('Weeks Before/After')
+# plt.ylabel('Avg Runs/Week')
+# plt.plot(marathon_week_xs, marathon_week_data, label='Average Runs/Week')
+# plt.axvline(x=3.5, color='gray', linestyle='--', label='Marathon Ran')
+# plt.axhline(y=avg_rpw, color='green', linestyle='--', label="Overall Avg Runs/Week")
+# plt.title('Average Runs/Week Around Marathon (Women)')
+# plt.legend(loc='upper right')
+# plt.grid(True)
+# plt.show()
+
 #%% logistic regression
 
 # Fit the model with the training data
@@ -177,8 +220,21 @@ nn_model = Sequential([
 nn_model.compile(optimizer=optimizer,
               loss='binary_crossentropy',
               metrics=['accuracy', 'Recall','Precision'])
+
 history = nn_model.fit(X_train, y_train.gender, epochs=30, validation_data=(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender))
 nn_loss, nn_accuracy, nn_recall, nn_precision = nn_model.evaluate(enum_val_df_norm.drop(['athlete', 'gender'], axis=1), y_val.gender)
+
+print('Logistic Regression:')
+print( 'Accuracy: ' + str( LR_accuracy ))
+print( LR_report )
+
+print('LDA:')
+print( 'Accuracy: ' + str( LDA_accuracy ))
+print( LDA_report )
+
+print('NN:')
+print( 'Accuracy: ' + str( nn_accuracy ))
+print( 'Recall: ' + str( nn_recall ))
 
 #%% plotting separated by age for M/F
 k=0
@@ -193,23 +249,22 @@ n = int(len(filtered_df)/365)
 m_avg_vec = np.zeros((n,1))
 f_avg_vec = np.zeros((n,1))
 
+# for i in idx[0:n]:
+#     #grab 18-34 y/o athlete and assign color for gender
+#     ath = filtered_df.iloc[i].athlete
+#     ath_data = filtered_df[(filtered_df['athlete']==ath) & (filtered_df['distance']!=0)]
 
-for i in idx[0:n]:
-    #grab 18-34 y/o athlete and assign color for gender
-    ath = filtered_df.iloc[i].athlete
-    ath_data = filtered_df[(filtered_df['athlete']==ath) & (filtered_df['distance']!=0)]
-
-    pace = ath_data['duration']/ath_data['distance']
-    avg = np.average(pace)
-    #dist = ath_data['distance']
-    #avg = np.average(dist)
+#     pace = ath_data['duration']/ath_data['distance']
+#     avg = np.average(pace)
+#     #dist = ath_data['distance']
+#     #avg = np.average(dist)
     
-    if (filtered_df['gender'][i]== 'M'):
-        color = 'b.'
-        m_avg_vec[k] = avg; k+=1
-    else:
-        color = 'r.'
-        f_avg_vec[k] = avg; k+=1
+#     if (filtered_df['gender'][i]== 'M'):
+#         color = 'b.'
+#         m_avg_vec[k] = avg; k+=1
+#     else:
+#         color = 'r.'
+#         f_avg_vec[k] = avg; k+=1
     
     plt.plot(ath_data.index,pace,color)
 '''
@@ -274,6 +329,7 @@ plt.ylim(0,15)
 ax.set_xlabel('Athlete #')
 ax.set_ylabel('Average Pace (min/km)')
 ax.set_title('Average Pace by Age')
+
 
 
 
